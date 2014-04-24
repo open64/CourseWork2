@@ -93,22 +93,88 @@ class NumNode(TreeNode):
 
 
 class VarNode(TreeNode):
-    def __init__(self, text, start):
+    def __init__(self, text, start, times=1, plus=0, power=1):
         self.name = text                    # variable name
+        self.var = text
+        self.power = power
+        self.times = times
+        self.plus = plus
         self.column = start                   # column for errors
+
+    def __mul__(self, other):
+        self.times *= other
+        self.plus *= other
+        return self
+
+    def __rmul__(self, other):
+        self.times *= other
+        self.plus *= other
+        return self
+
+    def __add__(self, other):
+        self.plus += other
+        return self
+
+    def __radd__(self, other):
+        self.plus += other
+        return self
+
+    def __sub__(self, other):
+        self.plus -= other
+        return self
+
+    def __rsub__(self, other):
+        self.times = -self.times
+        self.plus = other - self.plus
+        return self
+
+    def __div__(self, other):
+        self.times /= other
+        return self
+
+    def __pow__(self, power, modulo=None):
+        self.times **= power
+        self.power *= power
+        self.plus = VarNode(self.var, None, self.plus*2, self.plus**power)
+        return self
+
+    def __gt__(self, other):
+        return self.times > other
+
+    def __lt__(self, other):
+        return self.times < other
+
+    def __rpow__(self, power, modulo=None):
+        self.times **= power
+        self.power **= power
+        self.plus = VarNode(self.var, None, self.plus*2, self.plus**power)
+        return self
 
     def validate(self, dict):
         if not self.name in dict.keys():
             raise UndefinedError(self.name, self.column)
 
     def apply(self, dict):
-        return dict[self.name]                # validate before apply
+        return self                # validate before apply
 
     def assign(self, value, dict):
         dict[self.name] = value               # local extension
 
     def trace(self, level):
         print('.' * level + self.name)
+
+    def __str__(self):
+        string = ''
+        if self.times != 1:
+            string += str(self.times) + '*'
+        string += str(self.var)
+        if self.power != 1:
+            string += '^' + str(self.power)
+        if self.plus > 0:
+            string += '+' + str(self.plus)
+        elif self.plus < 0:
+            string += str(self.plus)
+        return string
 
 # COMPOSITES
 
@@ -148,8 +214,9 @@ class Parser:
             if self.traceme:                   # dump parse-tree?
                 print()
                 tree.trace(0)
-            if self.errorCheck(tree):          # check names
-                self.interpret(tree)           # evaluate tree
+            # if self.errorCheck(tree):          # check names
+            #     self.interpret(tree)           # evaluate tree
+        return tree
 
     def analyse(self):
         try:
@@ -215,17 +282,30 @@ class Parser:
         while True:
             if self.lex.token in ['+', '-', '\0', ')']:
                 return left
+            elif self.lex.token == '*':
+                self.lex.scan()
+                left = TimesNode(left, self.Factor2())
+            elif self.lex.token == '/':
+                self.lex.scan()
+                left = DivideNode(left, self.Factor2())
+            else:
+                raise SyntaxError()
+
+    def Factor2(self):
+        left = self.Term()
+        while True:
+            if self.lex.token in ['+', '-', '\0', ')']:
+                return left
+            elif self.lex.token == '*':
+                return left
+            elif self.lex.token == '/':
+                return left
             elif self.lex.token == '^':
                 self.lex.scan()
                 left = PowerNode(left, self.Term())
-            elif self.lex.token == '*':
-                self.lex.scan()
-                left = TimesNode(left, self.Term())
-            elif self.lex.token == '/':
-                self.lex.scan()
-                left = DivideNode(left, self.Term())
             else:
                 raise SyntaxError()
+
 
     def Term(self):
         if self.lex.token == 'num':
