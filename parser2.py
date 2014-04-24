@@ -21,7 +21,7 @@ class TreeNode:
     def validate(self, dict):           # default error check
         pass
 
-    def apply(self, dict):              # default evaluator
+    def apply(self, dict=None):              # default evaluator
         pass
 
     def trace(self, level):             # default unparser
@@ -47,35 +47,35 @@ class BinaryNode(TreeNode):
 class PowerNode(BinaryNode):
     label = '^'
 
-    def apply(self, dict):
+    def apply(self, dict=None):
         return self.left.apply(dict) ** self.right.apply(dict)
 
 
 class TimesNode(BinaryNode):
     label = '*'
 
-    def apply(self, dict):
+    def apply(self, dict=None):
         return self.left.apply(dict) * self.right.apply(dict)
 
 
 class DivideNode(BinaryNode):
     label = '/'
 
-    def apply(self, dict):
+    def apply(self, dict=None):
         return self.left.apply(dict) / self.right.apply(dict)
 
 
 class PlusNode(BinaryNode):
     label = '+'
 
-    def apply(self, dict):
+    def apply(self, dict=None):
         return self.left.apply(dict) + self.right.apply(dict)
 
 
 class MinusNode(BinaryNode):
     label = '-'
 
-    def apply(self, dict):
+    def apply(self, dict=None):
         return self.left.apply(dict) - self.right.apply(dict)
 
 # LEAVES
@@ -85,7 +85,7 @@ class NumNode(TreeNode):
     def __init__(self, num):
         self.num = num                 # already numeric
 
-    def apply(self, dict):             # use default validate
+    def apply(self, dict=None):             # use default validate
         return self.num
 
     def trace(self, level):
@@ -133,10 +133,10 @@ class VarNode(TreeNode):
         return self
 
     def __pow__(self, power, modulo=None):
-        self.times **= power
-        self.power *= power
-        self.plus = VarNode(self.var, None, self.plus*2, self.plus**power)
-        return self
+        return self._pow(power)
+
+    def __rpow__(self, power, modulo=None):
+        return self._pow(power)
 
     def __gt__(self, other):
         return self.times > other
@@ -144,21 +144,24 @@ class VarNode(TreeNode):
     def __lt__(self, other):
         return self.times < other
 
-    def __rpow__(self, power, modulo=None):
-        self.times **= power
-        self.power **= power
-        self.plus = VarNode(self.var, None, self.plus*2, self.plus**power)
-        return self
+    def _pow(self, power):
+        return VarNode(self, None, 1, 0, power)
 
     def validate(self, dict):
         if not self.name in dict.keys():
             raise UndefinedError(self.name, self.column)
 
-    def apply(self, dict):
+    def apply(self, dict=None):
         return self                # validate before apply
 
     def assign(self, value, dict):
         dict[self.name] = value               # local extension
+
+    def get_plus(self):
+        try:
+            return self.plus.get_plus()
+        except AttributeError:
+            return -self.plus
 
     def trace(self, level):
         print('.' * level + self.name)
@@ -167,7 +170,7 @@ class VarNode(TreeNode):
         string = ''
         if self.times != 1:
             string += str(self.times) + '*'
-        string += str(self.var)
+        string += '(' + str(self.var) + ')'
         if self.power != 1:
             string += '^' + str(self.power)
         if self.plus > 0:
@@ -186,7 +189,7 @@ class AssignNode(TreeNode):
     def validate(self, dict):
         self.val.validate(dict)               # don't validate var
 
-    def apply(self, dict):
+    def apply(self, dict=None):
         self.var.assign( self.val.apply(dict), dict )
 
     def trace(self, level):

@@ -16,9 +16,22 @@ if __name__ == '__main__':
             right = right[:i] + '+' + right[i+1:]
     string = left + right
     find_y = re.findall('[-|+].[^y]*y.[^-|+]*', string)
-    result = [parser2.Parser().parse(y[1:]) for y in find_y]
+    result = [parser2.Parser().parse(y[1:]).apply() for y in find_y]
     for i in result:
         print(i.apply(1))
+    left = ''
+    prev_pos = 0
+    next_pos = 0
+    for s in find_y:
+        next_pos = string.find(s)
+        left += string[prev_pos:next_pos]
+        prev_pos = next_pos + len(s)
+    left += string[prev_pos:]
+    for r in result:
+        left += str(r.get_plus())
+    print(left)
+    right = 0 - result[0] + result[0].get_plus()
+    print(right)
     # print(parser2.Parser().parse('2*(y-5)').apply(1))
 
 
