@@ -152,6 +152,8 @@ class VarNode(TreeNode):
             raise UndefinedError(self.name, self.column)
 
     def apply(self, dict=None):
+        if self.name in dict:
+            return dict[self.name]
         return self                # validate before apply
 
     def assign(self, value, dict):
@@ -219,18 +221,18 @@ class Parser:
                 tree.trace(0)
             # if self.errorCheck(tree):          # check names
             #     self.interpret(tree)           # evaluate tree
-        return tree
+        return tree.apply(self.vars)
 
     def analyse(self):
-        try:
-            self.lex.scan()                    # get first token
-            return self.Goal()                 # build a parse-tree
-        except SyntaxError:
-            print('Syntax Error at column:', self.lex.start)
-            self.lex.showerror()
-        except LexicalError:
-            print('Lexical Error at column:', self.lex.start)
-            self.lex.showerror()
+        # try:
+        self.lex.scan()                    # get first token
+        return self.Goal()                 # build a parse-tree
+        # except SyntaxError:
+        #     print('Syntax Error at column:', self.lex.start)
+        #     self.lex.showerror()
+        # except LexicalError:
+        #     print('Lexical Error at column:', self.lex.start)
+        #     self.lex.showerror()
 
     def errorCheck(self, tree):
         try:
@@ -281,7 +283,7 @@ class Parser:
                 raise SyntaxError()
 
     def Factor(self):
-        left = self.Term()
+        left = self.Factor2()
         while True:
             if self.lex.token in ['+', '-', '\0', ')']:
                 return left
@@ -291,6 +293,9 @@ class Parser:
             elif self.lex.token == '/':
                 self.lex.scan()
                 left = DivideNode(left, self.Factor2())
+            # elif self.lex.token == '^':
+            #     self.lex.scan()
+            #     left = PowerNode(left, self.Term())
             else:
                 raise SyntaxError()
 
