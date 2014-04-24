@@ -27,13 +27,19 @@ if __name__ == '__main__':
         left += string[prev_pos:next_pos]
         prev_pos = next_pos + len(s)
     left += string[prev_pos:]
-    for r in result:
-        left += str(r.get_plus())
-    print(left)
-    right = 0 - result[0] + result[0].get_plus()
     print(right)
-    # print(parser2.Parser().parse('2*(y-5)').apply(1))
+    right = result[0]
+    print()
+    right = 0 - right
+    while type(right) != type(''):
+        # for r in result:
+        #     left += str(r.get_plus())
+        left += str(right.get_plus())
+        right = right + result[0].get_plus()
+        left = '(' + '(' + left + ')/' + str(right.times) + ')^' + str(1 / right.power)
+        right = right.var
+        string = left + '=' + str(right)
+    print(string)
 
-
-    x.parse(string)
+    # x.parse(string)
     # GraphFrame(GraphWindow()).mainloop()
