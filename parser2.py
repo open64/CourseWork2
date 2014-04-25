@@ -2,15 +2,13 @@
 Separate expression parsing from evaluation by building an explicit parse tree
 """
 
+from scanner import Scanner, SyntaxError, LexicalError     # from PyTree
 TraceDefault = False
 
 
-class UndefinedError(Exception): pass
+class UndefinedError(Exception):
+    pass
 
-if __name__ == '__main__':
-    from scanner import Scanner, SyntaxError, LexicalError      # if run here
-else:
-    from scanner import Scanner, SyntaxError, LexicalError     # from PyTree
 
 #################################################################################
 # the interpreter (a smart objects tree)
@@ -18,10 +16,10 @@ else:
 
 
 class TreeNode:
-    def validate(self, dict):           # default error check
+    def validate(self, dict_vars):           # default error check
         pass
 
-    def apply(self, dict=None):              # default evaluator
+    def apply(self, dict_vars=dict()):              # default evaluator
         pass
 
     def trace(self, level):             # default unparser
@@ -33,10 +31,11 @@ class TreeNode:
 class BinaryNode(TreeNode):
     def __init__(self, left, right):            # inherited methods
         self.left, self.right = left, right     # left/right branches
+        self.label = ''
 
-    def validate(self, dict):
-        self.left.validate(dict)                # recurse down branches
-        self.right.validate(dict)
+    def validate(self, dict_vars):
+        self.left.validate(dict_vars)                # recurse down branches
+        self.right.validate(dict_vars)
 
     def trace(self, level):
         print('.' * level + '[' + self.label + ']')
@@ -47,36 +46,36 @@ class BinaryNode(TreeNode):
 class PowerNode(BinaryNode):
     label = '^'
 
-    def apply(self, dict=None):
-        return self.left.apply(dict) ** self.right.apply(dict)
+    def apply(self, dict_vars=dict()):
+        return self.left.apply(dict_vars) ** self.right.apply(dict_vars)
 
 
 class TimesNode(BinaryNode):
     label = '*'
 
-    def apply(self, dict=None):
-        return self.left.apply(dict) * self.right.apply(dict)
+    def apply(self, dict_vars=dict()):
+        return self.left.apply(dict_vars) * self.right.apply(dict_vars)
 
 
 class DivideNode(BinaryNode):
     label = '/'
 
-    def apply(self, dict=None):
-        return self.left.apply(dict) / self.right.apply(dict)
+    def apply(self, dict_vars=dict()):
+        return self.left.apply(dict_vars) / self.right.apply(dict_vars)
 
 
 class PlusNode(BinaryNode):
     label = '+'
 
-    def apply(self, dict=None):
-        return self.left.apply(dict) + self.right.apply(dict)
+    def apply(self, dict_vars=dict()):
+        return self.left.apply(dict_vars) + self.right.apply(dict_vars)
 
 
 class MinusNode(BinaryNode):
     label = '-'
 
-    def apply(self, dict=None):
-        return self.left.apply(dict) - self.right.apply(dict)
+    def apply(self, dict_vars=dict()):
+        return self.left.apply(dict_vars) - self.right.apply(dict_vars)
 
 # LEAVES
 
@@ -85,7 +84,7 @@ class NumNode(TreeNode):
     def __init__(self, num):
         self.num = num                 # already numeric
 
-    def apply(self, dict=None):             # use default validate
+    def apply(self, dict_vars=dict()):             # use default validate
         return self.num
 
     def trace(self, level):
@@ -93,80 +92,13 @@ class NumNode(TreeNode):
 
 
 class VarNode(TreeNode):
-    def __init__(self, text, start, times=1, plus=0, power=1):
+    def __init__(self, text, start, power=1, times=1, plus=0):
         self.name = text                    # variable name
         self.var = text
         self.power = power
         self.times = times
         self.plus = plus
         self.column = start                   # column for errors
-
-    def __mul__(self, other):
-        self.times *= other
-        self.plus *= other
-        return self
-
-    def __rmul__(self, other):
-        self.times *= other
-        self.plus *= other
-        return self
-
-    def __add__(self, other):
-        self.plus += other
-        return self
-
-    def __radd__(self, other):
-        self.plus += other
-        return self
-
-    def __sub__(self, other):
-        self.plus -= other
-        return self
-
-    def __rsub__(self, other):
-        self.times = -self.times
-        self.plus = other - self.plus
-        return self
-
-    def __div__(self, other):
-        self.times /= other
-        return self
-
-    def __pow__(self, power, modulo=None):
-        return self._pow(power)
-
-    def __rpow__(self, power, modulo=None):
-        return self._pow(power)
-
-    def __gt__(self, other):
-        return self.times > other
-
-    def __lt__(self, other):
-        return self.times < other
-
-    def _pow(self, power):
-        return VarNode(self, None, 1, 0, power)
-
-    def validate(self, dict):
-        if not self.name in dict.keys():
-            raise UndefinedError(self.name, self.column)
-
-    def apply(self, dict=None):
-        if self.name in dict:
-            return dict[self.name]
-        return self                # validate before apply
-
-    def assign(self, value, dict):
-        dict[self.name] = value               # local extension
-
-    def get_plus(self):
-        try:
-            return self.plus.get_plus()
-        except AttributeError:
-            return -self.plus
-
-    def trace(self, level):
-        print('.' * level + self.name)
 
     def __str__(self):
         string = ''
@@ -181,6 +113,121 @@ class VarNode(TreeNode):
             string += str(self.plus)
         return string
 
+    def __add__(self, other):
+        return self._add(other)
+
+    def __radd__(self, other):
+        return self._add(other)
+
+    def __sub__(self, other):
+        return self._sub(other)
+
+    def __rsub__(self, other):
+        return -self._sub(other)
+
+    def __mul__(self, other):
+        return self._mul(other)
+
+    def __rmul__(self, other):
+        return self._mul(other)
+
+    def __truediv__(self, other):
+        if isinstance(other, self.__class__):
+            pass
+        elif isinstance(other, int) or isinstance(other, float):
+            self.times /= other
+            self.plus /= other
+            return self
+
+    def __rtruediv__(self, other):
+        pass
+
+    def __pow__(self, power, modulo=None):
+        return self._pow(power)
+
+    def __rpow__(self, power, modulo=None):
+        return self._pow(power)
+
+    def __neg__(self):
+        self.times = -self.times
+        self.plus = -self.plus
+        return self
+
+    def __gt__(self, other):
+        return self.times > other
+
+    def __lt__(self, other):
+        return self.times < other
+
+    def _add(self, other):
+        if isinstance(other, self.__class__):
+            if self.var == other.var and self.power == self.power:
+                self.times += other.times
+                self.plus += other.plus
+            else:
+                self.plus += other
+        elif isinstance(other, int) or isinstance(other, float):
+            self.plus += other
+        else:
+            raise TypeError("unsupported operand type(s) for +: '{}' and '{}'").format(self.__class__, type(other))
+        return self
+
+    def _sub(self, other):
+        if isinstance(other, self.__class__):
+            if self.var == other.var and self.power == self.power:
+                self.times -= other.times
+                self.plus -= other.plus
+            else:
+                self.plus -= other
+        elif isinstance(other, int) or isinstance(other, float):
+            self.plus -= other
+        else:
+            raise TypeError("unsupported operand type(s) for -: '{}' and '{}'").format(self.__class__, type(other))
+        return self
+
+    def _mul(self, other):
+        if isinstance(other, self.__class__):
+            if self.var == other.var:
+                self.power += other.power
+            else:
+                self.times *= VarNode(other.var, None, other.power)
+            self.times *= other.times
+            last_plus = VarNode(self.var, None, self.power, self.times * other.plus, self.plus * other.plus)
+            self.plus = VarNode(other.var, None, other.power, other.times * self.plus, last_plus)
+        elif isinstance(other, int) or isinstance(other, float):
+            self.times *= other
+            self.plus *= other
+        else:
+            raise TypeError("unsupported operand type(s) for *: '{}' and '{}'").format(self.__class__, type(other))
+        return self
+
+    def _pow(self, power):
+        if isinstance(power, self.__class__):
+            pass
+        elif isinstance(power, int) or isinstance(power, float):
+            return VarNode(self, None, power)
+
+    def validate(self, dict_vars):
+        if not self.name in dict_vars.keys():
+            raise UndefinedError(self.name, self.column)
+
+    def apply(self, dict_vars=None):
+        if self.name in dict_vars:
+            return dict_vars[self.name]
+        return self                # validate before apply
+
+    def assign(self, value, dict):
+        dict[self.name] = value               # local extension
+
+    def get_plus(self):
+        try:
+            return self.plus.get_plus()
+        except AttributeError:
+            return -self.plus
+
+    def trace(self, level):
+        print('.' * level + self.name)
+
 # COMPOSITES
 
 
@@ -188,11 +235,11 @@ class AssignNode(TreeNode):
     def __init__(self, var, val):
         self.var, self.val = var, val
 
-    def validate(self, dict):
-        self.val.validate(dict)               # don't validate var
+    def validate(self, dict_vars):
+        self.val.validate(dict_vars)               # don't validate var
 
-    def apply(self, dict=None):
-        self.var.assign( self.val.apply(dict), dict )
+    def apply(self, dict_vars=None):
+        self.var.assign(self.val.apply(dict_vars), dict_vars)
 
     def trace(self, level):
         print('.' * level + 'set ')
@@ -226,7 +273,7 @@ class Parser:
     def analyse(self):
         # try:
         self.lex.scan()                    # get first token
-        return self.Goal()                 # build a parse-tree
+        return self.goal()                 # build a parse-tree
         # except SyntaxError:
         #     print('Syntax Error at column:', self.lex.start)
         #     self.lex.showerror()
@@ -234,14 +281,14 @@ class Parser:
         #     print('Lexical Error at column:', self.lex.start)
         #     self.lex.showerror()
 
-    def errorCheck(self, tree):
+    def error_check(self, tree):
         try:
             tree.validate(self.vars)           # error checker
             return 'ok'
         except UndefinedError as instance:     # args is a tuple
-            varinfo = instance.args
-            print("'%s' is undefined at column: %d" % varinfo)
-            self.lex.start = varinfo[1]
+            var_info = instance.args
+            print("'%s' is undefined at column: %d" % var_info)
+            self.lex.start = var_info[1]
             self.lex.showerror()               # returns None
 
     def interpret(self, tree):
@@ -249,58 +296,55 @@ class Parser:
         if result is not None:                     # ignore 'set' result
             print(result)                      # ignores errors
 
-    def Goal(self):
+    def goal(self):
         if self.lex.token in ['num', 'var', '(']:
-            tree = self.Expr()
+            tree = self.expr()
             self.lex.match('\0')
             return tree
         elif self.lex.token == 'set':
-            tree = self.Assign()
+            tree = self.assign()
             self.lex.match('\0')
             return tree
         else:
             raise SyntaxError()
 
-    def Assign(self):
+    def assign(self):
         self.lex.match('set')
-        vartree = VarNode(self.lex.value, self.lex.start)
+        var_tree = VarNode(self.lex.value, self.lex.start)
         self.lex.match('var')
-        valtree = self.Expr()
-        return AssignNode(vartree, valtree)               # two subtrees
+        val_tree = self.expr()
+        return AssignNode(var_tree, val_tree)               # two subtrees
 
-    def Expr(self):
-        left = self.Factor()                              # left subtree
+    def expr(self):
+        left = self.factor()                              # left subtree
         while True:
             if self.lex.token in ['\0', ')']:
                 return left
             elif self.lex.token == '+':
                 self.lex.scan()
-                left = PlusNode(left, self.Factor())      # add root-node
+                left = PlusNode(left, self.factor())      # add root-node
             elif self.lex.token == '-':
                 self.lex.scan()
-                left = MinusNode(left, self.Factor())     # grows up/right
+                left = MinusNode(left, self.factor())     # grows up/right
             else:
                 raise SyntaxError()
 
-    def Factor(self):
-        left = self.Factor2()
+    def factor(self):
+        left = self.factor2()
         while True:
             if self.lex.token in ['+', '-', '\0', ')']:
                 return left
             elif self.lex.token == '*':
                 self.lex.scan()
-                left = TimesNode(left, self.Factor2())
+                left = TimesNode(left, self.factor2())
             elif self.lex.token == '/':
                 self.lex.scan()
-                left = DivideNode(left, self.Factor2())
-            # elif self.lex.token == '^':
-            #     self.lex.scan()
-            #     left = PowerNode(left, self.Term())
+                left = DivideNode(left, self.factor2())
             else:
                 raise SyntaxError()
 
-    def Factor2(self):
-        left = self.Term()
+    def factor2(self):
+        left = self.term()
         while True:
             if self.lex.token in ['+', '-', '\0', ')']:
                 return left
@@ -310,12 +354,11 @@ class Parser:
                 return left
             elif self.lex.token == '^':
                 self.lex.scan()
-                left = PowerNode(left, self.Term())
+                left = PowerNode(left, self.term())
             else:
                 raise SyntaxError()
 
-
-    def Term(self):
+    def term(self):
         if self.lex.token == 'num':
             leaf = NumNode(self.lex.match('num'))
             return leaf
@@ -325,16 +368,8 @@ class Parser:
             return leaf
         elif self.lex.token == '(':
             self.lex.scan()
-            tree = self.Expr()
+            tree = self.expr()
             self.lex.match(')')
             return tree
         else:
             raise SyntaxError()
-
-#################################################################################
-# self-test code: use my parser, parser1's tester
-#################################################################################
-
-if __name__ == '__main__':
-    import testparser
-    testparser.test(Parser, 'parser2')    #  run with Parser class here
