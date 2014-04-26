@@ -8,10 +8,9 @@ class GraphFigures(Figure):
         Figure.__init__(self, figsize=(5, 6), dpi=100)
         self.figure = self.add_subplot(111)
         self.arr = arange(start, end, step)
-        self.result_formula = None
+        self.result_formula = list()
 
     def _make_equation(self, string):
-        global result
         try:
             string = string.replace('**', '^')
             left, right = string.split('=')
@@ -22,40 +21,24 @@ class GraphFigures(Figure):
                 elif symbol == '-':
                     right = right[:i] + '+' + right[i+1:]
             string = left + right
-            arr_result = []
-            parse = parser2.Parser()
-            result = parse.parse(string)
-            print(result)
-            for x in self.arr:
-                left = result
-                right = ''
-                result = 0
-                while type('') != type(left):
-                    result += left.get_plus()
-                    right += str(left.get_plus())
-                    left += left.get_plus()
-                    if left.times != 1:
-                        right = '(' + right + ')/' + str(left.times)
-                        result /= left.times
-                    if left.power != 1:
-                        right = '(' + right + ')^' + str(1 / left.power)
-                        result **= 1 / left.power
-                    left = left.var
-                # print(left, '=', right, sep='')
-                # print(result)
-                # print()
-                arr_result.append(result)
-            t = array(arr_result)
+            parse = parser2.Parser().parse(string)
+            self.result_formula.append(dict())
+            for variable in ['x', 'y']:
+                self.result_formula[-1][variable] = parse.expression(variable)
         except SyntaxError:
             return None
         except NameError:
             return None
-        self.figure.plot(t)
-        return result
 
     def make_figure(self, equation_1, equation_2):
-        if equation_1 or equation_2:
-            self.result_formula = [self._make_equation(equation_1), self._make_equation(equation_2)]
+        if equation_1 and equation_2:
+            for i, equation in enumerate([equation_1, equation_2]):
+                self._make_equation(equation)
+                arr_result = []
+                formula = str(self.result_formula[i]['y']).replace('^', '**')
+                for x in self.arr:
+                    arr_result.append(eval(formula))
+                self.figure.plot(array(arr_result))
 
     def solution_equations(self, arr_equations, start, finish, step):
         pass

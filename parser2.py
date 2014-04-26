@@ -1,8 +1,9 @@
 """
 Separate expression parsing from evaluation by building an explicit parse tree
 """
-
+from copy import deepcopy
 from scanner import Scanner, SyntaxError, LexicalError     # from PyTree
+import re
 TraceDefault = False
 
 
@@ -20,6 +21,9 @@ class TreeNode:
         pass
 
     def apply(self, dict_vars=dict()):              # default evaluator
+        pass
+
+    def is_priority(self, dict_vars):
         pass
 
     def trace(self, level):             # default unparser
@@ -46,6 +50,9 @@ class BinaryNode(TreeNode):
 class PowerNode(BinaryNode):
     label = '^'
 
+    def is_priority(self, dict_vars):
+        return self.left.is_priority(dict_vars) or self.right.is_priority(dict_vars)
+
     def apply(self, dict_vars=dict()):
         return self.left.apply(dict_vars) ** self.right.apply(dict_vars)
 
@@ -53,28 +60,48 @@ class PowerNode(BinaryNode):
 class TimesNode(BinaryNode):
     label = '*'
 
+    def is_priority(self, dict_vars):
+        return self.left.is_priority(dict_vars) or self.right.is_priority(dict_vars)
+
     def apply(self, dict_vars=dict()):
+        if self.right.is_priority(dict_vars):
+            return self.right.apply(dict_vars) * self.left.apply(dict_vars)
         return self.left.apply(dict_vars) * self.right.apply(dict_vars)
 
 
 class DivideNode(BinaryNode):
     label = '/'
 
+    def is_priority(self, dict_vars):
+        return self.left.is_priority(dict_vars) or self.right.is_priority(dict_vars)
+
     def apply(self, dict_vars=dict()):
+        if self.right.is_priority(dict_vars):
+            return self.right.apply(dict_vars) / self.left.apply(dict_vars)
         return self.left.apply(dict_vars) / self.right.apply(dict_vars)
 
 
 class PlusNode(BinaryNode):
     label = '+'
 
+    def is_priority(self, dict_vars):
+        return self.left.is_priority(dict_vars) or self.right.is_priority(dict_vars)
+
     def apply(self, dict_vars=dict()):
+        if self.right.is_priority(dict_vars):
+            return self.right.apply(dict_vars) + self.left.apply(dict_vars)
         return self.left.apply(dict_vars) + self.right.apply(dict_vars)
 
 
 class MinusNode(BinaryNode):
     label = '-'
 
+    def is_priority(self, dict_vars):
+        return self.left.is_priority(dict_vars) or self.right.is_priority(dict_vars)
+
     def apply(self, dict_vars=dict()):
+        if self.right.is_priority(dict_vars):
+            return -self.right.apply(dict_vars) + self.left.apply(dict_vars)
         return self.left.apply(dict_vars) - self.right.apply(dict_vars)
 
 # LEAVES
@@ -104,7 +131,11 @@ class VarNode(TreeNode):
         string = ''
         if self.times != 1:
             string += str(self.times) + '*'
-        string += '(' + str(self.var) + ')'
+        var_str = str(self.var)
+        if re.search('-|\+|\*|\/|\^', var_str):
+            string += '(' + var_str + ')'
+        else:
+            string += var_str
         if self.power != 1:
             string += '^' + str(self.power)
         if self.plus > 0:
@@ -161,7 +192,7 @@ class VarNode(TreeNode):
 
     def _add(self, other):
         if isinstance(other, self.__class__):
-            if self.var == other.var and self.power == self.power:
+            if self.var == other.var and self.power == other.power:
                 self.times += other.times
                 self.plus += other.plus
             else:
@@ -174,7 +205,7 @@ class VarNode(TreeNode):
 
     def _sub(self, other):
         if isinstance(other, self.__class__):
-            if self.var == other.var and self.power == self.power:
+            if self.var == other.var and self.power == other.power:
                 self.times -= other.times
                 self.plus -= other.plus
             else:
@@ -205,7 +236,14 @@ class VarNode(TreeNode):
         if isinstance(power, self.__class__):
             pass
         elif isinstance(power, int) or isinstance(power, float):
-            return VarNode(self, None, power)
+            if self.plus:
+                return VarNode(self, None, power)
+            else:
+                self.times **= power
+                self.power *= power
+        else:
+            raise TypeError("unsupported operand type(s) for *: '{}' and '{}'").format(self.__class__, type(power))
+        return self
 
     def validate(self, dict_vars):
         if not self.name in dict_vars.keys():
@@ -216,14 +254,11 @@ class VarNode(TreeNode):
             return dict_vars[self.name]
         return self                # validate before apply
 
+    def is_priority(self, dict_vars):
+        return self.var == dict_vars['_priority']
+
     def assign(self, value, dict):
         dict[self.name] = value               # local extension
-
-    def get_plus(self):
-        try:
-            return self.plus.get_plus()
-        except AttributeError:
-            return -self.plus
 
     def trace(self, level):
         print('.' * level + self.name)
@@ -252,23 +287,33 @@ class AssignNode(TreeNode):
 
 
 class Parser:
-    def __init__(self, text='', **kwargs):
+    def __init__(self, text='', priority='', **kwargs):
         self.lex = Scanner(text)           # make a scanner
         self.vars = kwargs          # add constants
         self.vars['pi'] = 3.14159
+        self.vars['_priority'] = priority
         self.traceme = TraceDefault
+        self.tree = None
 
-    def parse(self, *text):                    # external interface
+    def expression(self, priority):
+        self.vars['_priority'] = priority
+        variable = deepcopy(self.tree).apply(self.vars)
+        while type('') != type(variable):
+            result = (-variable.plus / variable.times)**(1 / variable.power)
+            variable = variable.var
+        return result
+
+    def parse(self, text):                    # external interface
         if text:
-            self.lex.new_text(text[0])          # reuse with new text
-        tree = self.analyse()                  # parse string
-        if tree:
+            self.lex.new_text(text)          # reuse with new text
+        self.tree = self.analyse()                  # parse string
+        if self.tree:
             if self.traceme:                   # dump parse-tree?
                 print()
-                tree.trace(0)
+                self.tree.trace(0)
             # if self.errorCheck(tree):          # check names
             #     self.interpret(tree)           # evaluate tree
-        return tree.apply(self.vars)
+        return self
 
     def analyse(self):
         # try:
