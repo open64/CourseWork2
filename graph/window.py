@@ -46,10 +46,12 @@ class GraphFrame(Frame):
 
         Label(self._panel, text='Введіть перше рівняння:').pack(side=TOP, fill=X)
         self._equation_1_entry = Entry(self._panel)
+        self._equation_1_entry.insert(0, 'x**2-2*x-y+0.5=0')
         self._equation_1_entry.pack(side=TOP, fill=X)
 
         Label(self._panel, text='Введіть друге рівняння:').pack(side=TOP, fill=X)
         self._equation_2_entry = Entry(self._panel)
+        self._equation_2_entry.insert(0, 'x**2+4*y**2-4=0')
         self._equation_2_entry.pack(side=TOP, fill=X)
 
         # Label(self._panel, text='Введіть початок:').pack(side=LEFT, fill=X, anchor=N)
