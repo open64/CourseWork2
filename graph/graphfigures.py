@@ -1,8 +1,9 @@
-from numpy import *
+from numpy import arange, array
 from matplotlib.figure import Figure
+from math import asin, sin, cos, acos, tan, atan
 import parser2
 import parser
-import re
+# import re
 
 
 class GraphFigures(Figure):
@@ -11,10 +12,10 @@ class GraphFigures(Figure):
         self.figure = self.add_subplot(111)
         self.arr = arange(start, end, step)
         self.result_formula = list()
+        self.formula = list()
 
     def _make_equation(self, string):
         try:
-            string = string.replace('**', '^')
             left, right = string.split('=')
             right = '+' + right
             for i, symbol in enumerate(right):
@@ -22,7 +23,9 @@ class GraphFigures(Figure):
                     right = right[:i] + '-' + right[i+1:]
                 elif symbol == '-':
                     right = right[:i] + '+' + right[i+1:]
-            string = left + right
+            string = left + (right if eval(right) else '')
+            self.formula.append(string)
+            string = string.replace('**', '^')
             parse = parser2.Parser().parse(string)
             self.result_formula.append(dict())
             for variable in ['x', 'y']:
@@ -38,42 +41,50 @@ class GraphFigures(Figure):
                 self._make_equation(equation)
                 self.figure.plot(array(self.get_result_formula(i, 'y')))
 
-    def get_result_formula(self, index, unknown):
+    def get_result_formula(self, index, unknown, start=0, end=3.0, step=0.001):
         result = []
         formula = str(self.result_formula[index][unknown]).replace('^', '**')
-        formula = re.sub('[a-zA-Z]+', 'x', formula)
+        # formula = re.sub('[a-zA-Z]+', 'x', formula)
+        if start:
+            self.arr = arange(start, end, step)
         for x in self.arr:
-            result.append(eval(formula))
+            try:
+                result.append(eval(parser.expr(formula).compile()))
+            except ValueError:
+                continue
         return result
 
+    def get_result(self, index, x, y):
+        return eval(parser.expr(self.formula[index]).compile())
+
+    def rotate_matrix(self, a):
+        det = a[0][0]*a[1][1] - a[0][1]*a[1][0]
+        if det:
+            aa = a[0][0]
+            a[0][0] = a[1][1]/det
+            a[1][1] = aa/det
+            a[0][1] = -a[0][1]/det
+            a[1][0] = -a[1][0]/det
+            return a
+
     def solution_equations(self, x, y, exactness):
-        count = 0
-        step = 0.1
-        h = 4*step
-        arr = [[0, 0], [0, 0]]
-        res = [0, 0]
-
-        # while True:
-        for i in range(2):
-            formula_x = str(self.result_formula[i]['y']).replace('^', '**')
-            formula_back_x = re.sub('[a-zA-Z]+', 'back_x', formula_x)
-            formula_next_x = re.sub('[a-zA-Z]+', 'next_x', formula_x)
-
-            formula_y = str(self.result_formula[i]['x']).replace('^', '**')
-            formula_back_y = re.sub('[a-zA-Z]+', 'back_y', formula_y)
-            formula_next_y = re.sub('[a-zA-Z]+', 'next_y', formula_y)
-            x_previous = x
-            back_x = x - step
-            next_x = x + step
-            arr[i][0] = (eval(parser.expr(formula_next_x).compile()) - eval(parser.expr(formula_back_x).compile())) / (2*h)
-
-            y_previous = y
-            back_y = y - step
-            next_y = y + step
-            arr[i][1] = (eval(parser.expr(formula_next_y).compile()) - eval(parser.expr(formula_back_y).compile())) / (2*h)
-        if arr[0][0] + arr[0][1] < 1 and arr[1][0] + arr[1][1] < 1:
-            return x, y
-            # if abs(x - x_previous) < exactness and abs(y - y_previous):
-            #     break
-        count += 1
-        return 0, 0
+        h = exactness
+        arr = [[0 for i in range(2)] for j in range(2)]
+        res = 2*exactness
+        while res >= exactness:
+            arr[0][0] = (self.get_result(0, x+exactness, y) - self.get_result(0, x-exactness, y)) / (2*h)
+            arr[0][1] = (self.get_result(0, x, y+exactness) - self.get_result(0, x, y-exactness)) / (2*h)
+            arr[1][0] = (self.get_result(1, x+exactness, y) - self.get_result(1, x-exactness, y)) / (2*h)
+            arr[1][1] = (self.get_result(1, x, y+exactness) - self.get_result(1, x, y-exactness)) / (2*h)
+            arr = self.rotate_matrix(arr)
+            if arr:
+                dx = -arr[0][0]*self.get_result(0, x, y) + -arr[0][1]*self.get_result(1, x, y)
+                dy = -arr[1][0]*self.get_result(0, x, y) + -arr[1][1]*self.get_result(1, x, y)
+                x += dx
+                y += dy
+                res1 = self.get_result(0, x, y)
+                res2 = self.get_result(1, x, y)
+                res = (res1**2 + res2**2)**0.5
+            else:
+                arr = [[0 for i in range(2)] for j in range(2)]
+        return x, y

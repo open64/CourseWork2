@@ -1,9 +1,12 @@
 """
 Separate expression parsing from evaluation by building an explicit parse tree
 """
+from _tkinter import create
 from copy import deepcopy
 from scanner import Scanner, SyntaxError, LexicalError     # from PyTree
 import re
+from numpy import sin, cos
+from math import tan, asin, acos, atan
 TraceDefault = False
 
 
@@ -118,10 +121,9 @@ class NumNode(TreeNode):
         print('.' * level + repr(self.num))   # as code, was 'self.num'
 
 
-class VarNode(TreeNode):
-    def __init__(self, text, start, power=1, times=1, plus=0):
-        self.name = text                    # variable name
-        self.var = text
+class FuncVarNode(TreeNode):
+    def __init__(self, name, start, power=1, times=1, plus=0):
+        self.name = name                    # variable name
         self.power = power
         self.times = times
         self.plus = plus
@@ -131,7 +133,7 @@ class VarNode(TreeNode):
         string = ''
         if self.times != 1:
             string += str(self.times) + '*'
-        var_str = str(self.var)
+        var_str = self.str_var()
         if re.search('-|\+|\*|\/|\^', var_str):
             string += '(' + var_str + ')'
         else:
@@ -197,10 +199,10 @@ class VarNode(TreeNode):
                 self.plus += other.plus
             else:
                 self.plus += other
-        elif isinstance(other, int) or isinstance(other, float):
+        elif isinstance(other, int) or isinstance(other, float) or isinstance(other, FuncVarNode):
             self.plus += other
         else:
-            raise TypeError("unsupported operand type(s) for +: '{}' and '{}'").format(self.__class__, type(other))
+            raise TypeError("unsupported operand type(s) for +: '{}' and '{}'".format(self.__class__, type(other)))
         return self
 
     def _sub(self, other):
@@ -210,10 +212,10 @@ class VarNode(TreeNode):
                 self.plus -= other.plus
             else:
                 self.plus -= other
-        elif isinstance(other, int) or isinstance(other, float):
+        elif isinstance(other, int) or isinstance(other, float) or isinstance(other, FuncVarNode):
             self.plus -= other
         else:
-            raise TypeError("unsupported operand type(s) for -: '{}' and '{}'").format(self.__class__, type(other))
+            raise TypeError("unsupported operand type(s) for -: '{}' and '{}'".format(self.__class__, type(other)))
         return self
 
     def _mul(self, other):
@@ -223,13 +225,13 @@ class VarNode(TreeNode):
             else:
                 self.times *= VarNode(other.var, None, other.power)
             self.times *= other.times
-            last_plus = VarNode(self.var, None, self.power, self.times * other.plus, self.plus * other.plus)
-            self.plus = VarNode(other.var, None, other.power, other.times * self.plus, last_plus)
-        elif isinstance(other, int) or isinstance(other, float):
+            last_plus = self.create_new_mul(self.var, self.power, self.times * other.plus, self.plus * other.plus)
+            self.plus = self.create_new_mul(other.var, other.power, other.times * self.plus, last_plus)
+        elif isinstance(other, int) or isinstance(other, float) or isinstance(other, FuncVarNode):
             self.times *= other
             self.plus *= other
         else:
-            raise TypeError("unsupported operand type(s) for *: '{}' and '{}'").format(self.__class__, type(other))
+            raise TypeError("unsupported operand type(s) for *: '{}' and '{}'".format(self.__class__, type(other)))
         return self
 
     def _pow(self, power):
@@ -237,13 +239,25 @@ class VarNode(TreeNode):
             pass
         elif isinstance(power, int) or isinstance(power, float):
             if self.plus:
-                return VarNode(self, None, power)
+                return self.create_new_pow(power)
             else:
                 self.times **= power
                 self.power *= power
         else:
-            raise TypeError("unsupported operand type(s) for *: '{}' and '{}'").format(self.__class__, type(power))
+            raise TypeError("unsupported operand type(s) for *: '{}' and '{}'".format(self.__class__, type(power)))
         return self
+
+    def create_new_pow(self, power):
+        pass
+
+    def create_new_mul(self, name, power, times, plus):
+        pass
+
+    def str_var(self):
+        pass
+
+    def get_var(self, result):
+        pass
 
     def validate(self, dict_vars):
         if not self.name in dict_vars.keys():
@@ -255,13 +269,62 @@ class VarNode(TreeNode):
         return self                # validate before apply
 
     def is_priority(self, dict_vars):
-        return self.var == dict_vars['_priority']
+        pass
 
     def assign(self, value, dict):
         dict[self.name] = value               # local extension
 
     def trace(self, level):
         print('.' * level + self.name)
+
+
+class VarNode(FuncVarNode):
+    def __init__(self, name, start, power=1, times=1, plus=0):
+        FuncVarNode.__init__(self, name, start, power, times, plus)
+        self.var = name
+
+    def create_new_pow(self, power):
+        return VarNode(self, None, power)
+
+    def create_new_mul(self, name, power, times, plus):
+        return VarNode(self.var, None, power, times, plus)
+
+    def str_var(self):
+        return str(self.var)
+
+    def get_var(self, result):
+        result = ((result-self.plus) / self.times)**(1 / self.power)
+        return result, self.var
+
+    def is_priority(self, dict_vars):
+        return self.var == dict_vars['_priority']
+
+
+class FuncNode(FuncVarNode):
+    def __init__(self, name, func, arg, power=1, times=1, plus=0, start=None):
+        FuncVarNode.__init__(self, name, start, power, times, plus)
+        self.func = func
+        self.arg = arg
+
+    def create_new_pow(self, power):
+        FuncNode(self, self.func, self.arg, power)
+
+    def create_new_mul(self, name, power, times, plus):
+        return FuncNode(self.name, self.func, self.arg, power, times, plus)
+
+    def str_var(self):
+        return self.name + '(' + str(self.arg) + ')'
+
+    def get_var(self, result):
+        result = ((result - self.plus) / self.times)**(1 / self.power)
+        if isinstance(result, FuncVarNode):
+            result = FuncNode(self.func['reverse_name'], self.func['reverse'], result)
+        elif isinstance(result, int) or isinstance(result, float):
+            result = self.func['reverse'](result)
+        return result, self.arg
+
+    def is_priority(self, dict_vars):
+        return self.arg.is_priority(dict_vars)
 
 # COMPOSITES
 
@@ -292,27 +355,43 @@ class Parser:
         self.vars = kwargs          # add constants
         self.vars['pi'] = 3.14159
         self.vars['_priority'] = priority
-        self.traceme = TraceDefault
+        self.func = {
+            'sin': Parser.create_func((lambda x: sin(x)), (lambda x: asin(x)), 'asin'),
+            'cos': Parser.create_func((lambda x: cos(x)), (lambda x: acos(x)), 'acos'),
+            'tan': Parser.create_func((lambda x: tan(x)), (lambda x: atan(x)), 'atan'),
+            'arcsin': Parser.create_func((lambda x: asin(x)), (lambda x: sin(x)), 'sin'),
+            'arccos': Parser.create_func((lambda x: acos(x)), (lambda x: cos(x)), 'cos'),
+            'arctan': Parser.create_func((lambda x: atan(x)), (lambda x: tan(x)), 'tan')
+        }
+        self.trace_me = TraceDefault
         self.tree = None
+
+    @staticmethod
+    def create_func(main, reverse, reverse_name):
+        return {
+            'main': main,
+            'reverse': reverse,
+            'reverse_name': reverse_name
+        }
 
     def expression(self, priority):
         self.vars['_priority'] = priority
         variable = deepcopy(self.tree).apply(self.vars)
+        result = 0
         while type('') != type(variable):
-            result = (-variable.plus / variable.times)**(1 / variable.power)
-            variable = variable.var
+            result, variable = variable.get_var(result)
         return result
 
     def parse(self, text):                    # external interface
         if text:
             self.lex.new_text(text)          # reuse with new text
         self.tree = self.analyse()                  # parse string
-        if self.tree:
-            if self.traceme:                   # dump parse-tree?
-                print()
-                self.tree.trace(0)
-            # if self.errorCheck(tree):          # check names
-            #     self.interpret(tree)           # evaluate tree
+        # if self.tree:
+        #     if self.trace_me:                   # dump parse-tree?
+        #         print()
+        #         self.tree.trace(0)
+        #     if self.errorCheck(self.tree):          # check names
+        #         self.interpret(self.tree)           # evaluate tree
         return self
 
     def analyse(self):
@@ -408,8 +487,14 @@ class Parser:
             leaf = NumNode(self.lex.match('num'))
             return leaf
         elif self.lex.token == 'var':
-            leaf = VarNode(self.lex.value, self.lex.start)
-            self.lex.scan()
+            if self.lex.value in self.func:
+                value = self.lex.value
+                self.lex.scan()
+                arg = self.term()
+                leaf = FuncNode(value, self.func[value], arg)
+            else:
+                leaf = VarNode(self.lex.value, self.lex.start)
+                self.lex.scan()
             return leaf
         elif self.lex.token == '(':
             self.lex.scan()
