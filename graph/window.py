@@ -6,8 +6,8 @@ from graph.graphfigures import GraphFigures
 class GraphWindow(Tk):
     def __init__(self):
         Tk.__init__(self)
-        self.title('???')
-        self.geometry('800x600')
+        self.title('Визначення вхідних даних для методу Ньютона розв’язання нелінійних рівнянь')
+        self.geometry('850x600')
         self._make_menu()
 
     def _make_menu(self):
@@ -24,6 +24,7 @@ class GraphFrame(Frame):
     def __init__(self, parent=None):
         Frame.__init__(self, parent)
         self.pack(expand=YES, fill=BOTH)
+        self._monitor = []
         self._make_widgets()
 
     def _make_widgets(self):
@@ -41,8 +42,10 @@ class GraphFrame(Frame):
         self._create_graph()
 
     def _make_panel(self):
-        self._panel = Frame(self)
-        self._panel.pack(side=LEFT, expand=YES, fill=BOTH)
+        panel = Frame(self)
+        panel.pack(side=LEFT, expand=YES, fill=BOTH)
+        self._panel = Frame(panel)
+        self._panel.pack(side=TOP, expand=YES, fill=BOTH)
 
         Label(self._panel, text='Введіть перше рівняння:').pack(side=TOP, fill=X)
         self._equation_1_entry = Entry(self._panel)
@@ -67,9 +70,20 @@ class GraphFrame(Frame):
         self._exactness_entry = Entry(self._panel)
         self._exactness_entry.insert(0, str(0.1))
         self._exactness_entry.pack(side=TOP, fill=X, anchor=N)
-        Button(self._panel, text='Розв’язати систему рівнянь', command=self._solution_equations).pack(fill=X)
+        Button(self._panel, text='Визначити початкову\nточку',
+               command=self._solution_equations).pack(fill=X, side=LEFT, anchor=N, expand=YES)
+        Button(self._panel, text='Визначити початкову\nточку вручну',
+               command=self._test_equations).pack(fill=X, side=RIGHT, anchor=N, expand=YES)
 
-        self.info_label = Label(self._panel, text='')
+        monitor_frame = Frame(panel)
+        monitor_frame.pack(fill=BOTH, expand=YES, side=TOP)
+        for i in range(2):
+            self._monitor.append([])
+            for j in range(5):
+                self._monitor[-1].append(Label(monitor_frame, text='', relief=RAISED, width=8))
+                self._monitor[-1][-1].grid(row=i, column=j)
+
+        self.info_label = Label(panel, text='')
         self.info_label.pack(side=BOTTOM, fill=X)
 
     def _create_graph(self):
@@ -88,3 +102,18 @@ class GraphFrame(Frame):
         exactness = float(self._exactness_entry.get())
         x, y = self.figure.solution_equations(x, y, exactness)
         self.info_label.config(text='x = %f; y = %f' % (x, y))
+
+    def _test_equations(self):
+        x = float(self._x_entry.get())
+        y = float(self._y_entry.get())
+        exactness = float(self._exactness_entry.get())
+        arr = self.figure.test_equations(x, y, exactness)
+        for i in range(2):
+            self._monitor[i][0].config(text='|%.2f|' % arr[i][0])
+            self._monitor[i][1].config(text='+')
+            self._monitor[i][2].config(text='|%.2f|' % arr[i][1])
+            if abs(arr[i][0]) + abs(arr[i][1]) < 1:
+                self._monitor[i][3].config(text='<')
+            else:
+                self._monitor[i][3].config(text='>=')
+            self._monitor[i][4].config(text='1')

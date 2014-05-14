@@ -88,3 +88,25 @@ class GraphFigures(Figure):
             else:
                 arr = [[0 for i in range(2)] for j in range(2)]
         return x, y
+
+    def test_equations(self, x, y, exactness):
+        h = 9*exactness
+        arr = [[0 for i in range(2)] for j in range(2)]
+        arr[0][0] = (self.get_result(0, x+exactness, y) - self.get_result(0, x-exactness, y)) / (2*h)
+        arr[0][1] = (self.get_result(0, x, y+exactness) - self.get_result(0, x, y-exactness)) / (2*h)
+        arr[1][0] = (self.get_result(1, x+exactness, y) - self.get_result(1, x-exactness, y)) / (2*h)
+        arr[1][1] = (self.get_result(1, x, y+exactness) - self.get_result(1, x, y-exactness)) / (2*h)
+        arr = self.rotate_matrix(arr)
+        if arr:
+            dx = -arr[0][0]*self.get_result(0, x, y) + -arr[0][1]*self.get_result(1, x, y)
+            dy = -arr[1][0]*self.get_result(0, x, y) + -arr[1][1]*self.get_result(1, x, y)
+            x += dx
+            y += dy
+            res1 = self.get_result(0, x, y)
+            res2 = self.get_result(1, x, y)
+            res = (res1**2 + res2**2)**0.5
+        arr[0][0] = res * 0.75
+        arr[0][1] = res * 0.25
+        arr[1][0] = -res * 0.41
+        arr[1][1] = res * 0.49
+        return arr
